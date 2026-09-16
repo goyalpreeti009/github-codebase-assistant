@@ -24,5 +24,8 @@ You give it a GitHub repository (`username/repository-name`), and the tool:
 * **Rich** – To make the terminal interface clean, readable, and nicely formatted
 * **Python-dotenv** – To keep secret tokens strictly local and safe
 
+## The Web UI (Streamlit)
+<img width="764" height="428" alt="web" src="https://github.com/user-attachments/assets/8c06faca-0f50-4c8c-8486-dd912783f931" />
+
 ---
 
