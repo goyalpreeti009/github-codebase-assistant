@@ -1,6 +1,7 @@
 import os
 import sys
 from dotenv import load_dotenv
+import github
 from github import Github
 from google import genai
 from rich.console import Console
@@ -18,14 +19,19 @@ if not GITHUB_TOKEN or not GEMINI_KEY:
     )
     sys.exit(1)
 
-# Initialize GitHub and Gemini clients
-gh = Github(GITHUB_TOKEN)
+# Clean authentication without deprecation warning
+auth = github.Auth.Token(GITHUB_TOKEN)
+gh = Github(auth=auth)
 ai = genai.Client(api_key=GEMINI_KEY)
+
+# Fallback chain in case one model is overloaded (503)
+MODELS_TO_TRY = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-3.6-flash"]
 
 IGNORED_DIRECTORIES = {
     ".git",
     "node_modules",
     "venv",
+    ".venv",
     "__pycache__",
     "dist",
     "build",
@@ -72,17 +78,32 @@ def extract_repo_context(repo_name: str, max_files: int = 10) -> str:
                 if file_item.name.endswith(SUPPORTED_EXTENSIONS):
                     try:
                         decoded_text = file_item.decoded_content.decode("utf-8")
-                        # Truncate large files to prevent exceeding model context windows
                         code_context += (
                             f"--- File: {file_item.path} ---\n"
                             f"{decoded_text[:1500]}\n\n"
                         )
                         files_processed += 1
                     except Exception:
-                        # Skip binary files or unreadable encodings
                         continue
 
     return code_context
+
+
+def generate_with_fallback(prompt: str) -> str:
+    """Attempts generation across a fallback list of models if high traffic (503) occurs."""
+    last_error = None
+    for model_name in MODELS_TO_TRY:
+        try:
+            response = ai.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            return response.text
+        except Exception as e:
+            last_error = e
+            console.print(f"[dim yellow]Model {model_name} busy or unavailable. Trying fallback...[/dim yellow]")
+            continue
+    raise last_error
 
 
 def main():
@@ -123,14 +144,13 @@ Instructions:
 - Cite specific files or directories when referencing architecture.
 - Include brief code snippets where relevant.
 """
-            response = ai.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
-
-        console.print("\n")
-        console.print(Markdown(response.text))
-        console.print("\n" + "-" * 60 + "\n")
+            try:
+                answer = generate_with_fallback(prompt)
+                console.print("\n")
+                console.print(Markdown(answer))
+                console.print("\n" + "-" * 60 + "\n")
+            except Exception as e:
+                console.print(f"[bold red]Error generating response: {e}[/bold red]")
 
 
 if __name__ == "__main__":
