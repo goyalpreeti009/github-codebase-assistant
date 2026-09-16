@@ -2,3 +2,4 @@ PyGithub
 python-dotenv
 google-genai
 rich
+streamlit
